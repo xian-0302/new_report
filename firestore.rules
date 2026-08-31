@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /activities/{docId} {
+      // 前端看板：任何人可讀（如需限制，改成 request.auth != null）
+      allow read: if true;
+
+      // 只允許更新 status 欄位（供看板上的「未查證/已確認/已略過」按鈕使用）
+      // 新增/刪除文件一律由 Cloud Function（後端管理員權限）處理，前端不可寫入新文件
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['status']);
+      allow create, delete: if false;
+    }
+  }
+}

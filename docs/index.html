@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>兩岸交流活動追蹤看板</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#22201B" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700;900&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#E4E1D6;
+    --surface:#F7F5EE;
+    --ink:#22201B;
+    --ink-soft:#54503F;
+    --line:#C9C2AC;
+    --stamp-red:#9A2B25;
+    --stamp-red-bg:#F1DFDA;
+    --stamp-green:#2F5233;
+    --stamp-green-bg:#DCE6D8;
+    --brass:#8B8368;
+    --indigo:#1F3A5F;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(0,0,0,0.035) 1px, transparent 0);
+    background-size:22px 22px;
+    color:var(--ink);
+    font-family:"Noto Sans TC", sans-serif;
+    min-height:100vh;
+  }
+  header.masthead{
+    border-bottom:3px double var(--ink);
+    padding:22px 20px 14px;
+    max-width:760px;
+    margin:0 auto;
+  }
+  .masthead-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    font-family:"Noto Sans Mono", monospace;
+    font-size:11px;
+    letter-spacing:.08em;
+    color:var(--ink-soft);
+    margin-bottom:10px;
+  }
+  h1{
+    font-family:"Noto Serif TC", serif;
+    font-weight:900;
+    font-size:clamp(26px,5vw,38px);
+    margin:0;
+    letter-spacing:.02em;
+  }
+  h1 span{color:var(--stamp-red);}
+  .subtitle{
+    font-size:13px;
+    color:var(--ink-soft);
+    margin-top:4px;
+  }
+
+  /* 電文跑馬燈 */
+  .ticker-wrap{
+    max-width:760px;
+    margin:14px auto 0;
+    background:var(--ink);
+    color:var(--paper);
+    overflow:hidden;
+    white-space:nowrap;
+    font-family:"Noto Sans Mono", monospace;
+    font-size:12px;
+    padding:7px 0;
+    border-radius:2px;
+  }
+  .ticker-track{
+    display:inline-block;
+    padding-left:100%;
+    animation:ticker 32s linear infinite;
+  }
+  .ticker-track span{margin-right:48px;}
+  @keyframes ticker{
+    0%{transform:translateX(0);}
+    100%{transform:translateX(-100%);}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .ticker-track{animation:none;padding-left:0;}
+  }
+
+  main{
+    max-width:760px;
+    margin:0 auto;
+    padding:18px 20px 60px;
+  }
+
+  .controls{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-bottom:18px;
+    padding-bottom:14px;
+    border-bottom:1px solid var(--line);
+  }
+  input[type="text"], select{
+    font-family:"Noto Sans TC", sans-serif;
+    font-size:13px;
+    padding:8px 10px;
+    border:1px solid var(--brass);
+    background:var(--surface);
+    color:var(--ink);
+    border-radius:2px;
+  }
+  input[type="text"]{flex:1 1 220px;}
+  .status-tabs{
+    display:flex;
+    gap:6px;
+    flex:1 1 100%;
+    margin-top:4px;
+  }
+  .status-tabs button{
+    font-family:"Noto Sans Mono", monospace;
+    font-size:11px;
+    letter-spacing:.05em;
+    padding:6px 12px;
+    border:1px solid var(--brass);
+    background:transparent;
+    color:var(--ink-soft);
+    cursor:pointer;
+    border-radius:2px;
+  }
+  .status-tabs button.active{
+    background:var(--ink);
+    color:var(--paper);
+    border-color:var(--ink);
+  }
+
+  .count-line{
+    font-family:"Noto Sans Mono", monospace;
+    font-size:11px;
+    color:var(--ink-soft);
+    margin-bottom:14px;
+  }
+
+  .card{
+    position:relative;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-left:3px dashed var(--brass);
+    padding:14px 16px 14px 18px;
+    margin-bottom:12px;
+    border-radius:2px;
+  }
+  .card-top{
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    align-items:flex-start;
+  }
+  .card-date{
+    font-family:"Noto Sans Mono", monospace;
+    font-size:11px;
+    color:var(--ink-soft);
+    white-space:nowrap;
+    padding-top:3px;
+  }
+  .card-title{
+    font-family:"Noto Serif TC", serif;
+    font-weight:700;
+    font-size:16px;
+    line-height:1.5;
+    margin:0;
+  }
+  .card-title a{color:var(--ink);text-decoration:none;}
+  .card-title a:hover{text-decoration:underline;}
+  .card-meta{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-top:10px;
+    align-items:center;
+  }
+  .tag{
+    font-size:11px;
+    padding:2px 8px;
+    border-radius:20px;
+    border:1px solid var(--brass);
+    color:var(--ink-soft);
+    background:transparent;
+  }
+  .tag.region{border-color:var(--indigo);color:var(--indigo);}
+  .source{
+    font-size:11px;
+    color:var(--ink-soft);
+    margin-left:auto;
+    font-family:"Noto Sans Mono", monospace;
+  }
+
+  .stamp{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    font-family:"Noto Sans Mono", monospace;
+    font-size:11px;
+    font-weight:500;
+    padding:3px 10px;
+    border-radius:20px;
+    cursor:pointer;
+    border:1.5px solid transparent;
+    transform:rotate(-2deg);
+    user-select:none;
+  }
+  .stamp.unverified{background:var(--stamp-red-bg);color:var(--stamp-red);border-color:var(--stamp-red);}
+  .stamp.confirmed{background:var(--stamp-green-bg);color:var(--stamp-green);border-color:var(--stamp-green);}
+  .stamp.dismissed{background:transparent;color:var(--ink-soft);border-color:var(--line);text-decoration:line-through;}
+
+  .actions{display:flex;gap:6px;margin-top:10px;}
+  .actions button{
+    font-family:"Noto Sans TC", sans-serif;
+    font-size:11px;
+    padding:4px 10px;
+    border:1px solid var(--line);
+    background:transparent;
+    color:var(--ink-soft);
+    border-radius:2px;
+    cursor:pointer;
+  }
+  .actions button:hover{border-color:var(--ink);color:var(--ink);}
+
+  .empty-state, .loading-state{
+    text-align:center;
+    padding:60px 20px;
+    color:var(--ink-soft);
+    font-size:13px;
+  }
+  .empty-state strong{display:block;font-family:"Noto Serif TC",serif;font-size:16px;color:var(--ink);margin-bottom:6px;}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-top">
+    <span id="today-date">----.--.--</span>
+    <span>兩岸事務動態彙整 · 自動更新</span>
+  </div>
+  <h1>兩岸交流<span>電訊</span>看板</h1>
+  <div class="subtitle">自動彙整國台辦 / 各地台辦 / 涉台媒體公開報導，供訂題參考</div>
+</header>
+
+<div class="ticker-wrap">
+  <div class="ticker-track" id="ticker-track">
+    <span>載入中…</span>
+  </div>
+</div>
+
+<main>
+  <div class="controls">
+    <input type="text" id="search" placeholder="搜尋標題關鍵字…" />
+    <select id="region-filter"><option value="">全部地區</option></select>
+    <select id="field-filter"><option value="">全部領域</option></select>
+    <div class="status-tabs">
+      <button data-status="all" class="active">全部</button>
+      <button data-status="unverified">未查證</button>
+      <button data-status="confirmed">已確認</button>
+      <button data-status="dismissed">已略過</button>
+    </div>
+  </div>
+
+  <div class="count-line" id="count-line"></div>
+  <div id="list"></div>
+</main>
+
+<!-- Firebase SDK（compat 版本，免建置工具） -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script>
+// ---------------------------------------------------------------------------
+// 請將以下設定換成你自己 Firebase 專案的 config（Firebase 主控台 → 專案設定）
+// ---------------------------------------------------------------------------
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID",
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+document.getElementById("today-date").textContent =
+  new Date().toISOString().slice(0,10).replace(/-/g, ".");
+
+let allItems = [];
+let statusFilter = "all";
+
+const listEl = document.getElementById("list");
+const countEl = document.getElementById("count-line");
+const searchEl = document.getElementById("search");
+const regionEl = document.getElementById("region-filter");
+const fieldEl = document.getElementById("field-filter");
+const tickerEl = document.getElementById("ticker-track");
+
+function fmtDate(pubDate){
+  if(!pubDate) return "日期不詳";
+  const d = new Date(pubDate);
+  if(isNaN(d)) return "日期不詳";
+  return d.toISOString().slice(0,10);
+}
+
+function statusLabel(s){
+  return {unverified:"未查證", confirmed:"已確認", dismissed:"已略過"}[s] || "未查證";
+}
+
+function render(){
+  const q = searchEl.value.trim();
+  const region = regionEl.value;
+  const field = fieldEl.value;
+
+  let filtered = allItems.filter(it=>{
+    if(statusFilter !== "all" && (it.status||"unverified") !== statusFilter) return false;
+    if(region && !(it.regions||[]).includes(region)) return false;
+    if(field && !(it.fields||[]).includes(field)) return false;
+    if(q && !(it.title||"").includes(q)) return false;
+    return true;
+  });
+
+  countEl.textContent = `共 ${filtered.length} 則（總計 ${allItems.length} 則）`;
+
+  if(filtered.length === 0){
+    listEl.innerHTML = `<div class="empty-state"><strong>目前沒有符合條件的訊息</strong>調整篩選條件，或等待下一輪自動抓取。</div>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(it=>{
+    const regions = (it.regions||[]).map(r=>`<span class="tag region">${r}</span>`).join("");
+    const fields = (it.fields||[]).map(f=>`<span class="tag">${f}</span>`).join("");
+    const status = it.status || "unverified";
+    return `
+      <article class="card" data-id="${it.id}">
+        <div class="card-top">
+          <h3 class="card-title"><a href="${it.link}" target="_blank" rel="noopener">${it.title}</a></h3>
+          <span class="card-date">${fmtDate(it.pubDate)}</span>
+        </div>
+        <div class="card-meta">
+          ${regions}${fields}
+          <span class="source">${it.source||""}</span>
+        </div>
+        <div class="actions">
+          <span class="stamp ${status}" data-action="cycle">● ${statusLabel(status)}</span>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function populateFilterOptions(){
+  const regions = new Set();
+  const fields = new Set();
+  allItems.forEach(it=>{
+    (it.regions||[]).forEach(r=>regions.add(r));
+    (it.fields||[]).forEach(f=>fields.add(f));
+  });
+  regionEl.innerHTML = `<option value="">全部地區</option>` +
+    [...regions].sort().map(r=>`<option value="${r}">${r}</option>`).join("");
+  fieldEl.innerHTML = `<option value="">全部領域</option>` +
+    [...fields].sort().map(f=>`<option value="${f}">${f}</option>`).join("");
+}
+
+function updateTicker(){
+  const latest = allItems.filter(it=>(it.status||"unverified")==="unverified").slice(0,8);
+  if(latest.length === 0){
+    tickerEl.innerHTML = `<span>目前沒有新訊息</span>`;
+    return;
+  }
+  tickerEl.innerHTML = latest.map(it=>`<span>◆ ${it.title}</span>`).join("");
+}
+
+const STATUS_CYCLE = {unverified:"confirmed", confirmed:"dismissed", dismissed:"unverified"};
+
+listEl.addEventListener("click", (e)=>{
+  const stamp = e.target.closest('[data-action="cycle"]');
+  if(!stamp) return;
+  const card = e.target.closest(".card");
+  const id = card.dataset.id;
+  const item = allItems.find(it=>it.id===id);
+  const next = STATUS_CYCLE[item.status || "unverified"];
+  db.collection("activities").doc(id).update({status: next})
+    .catch(err=>console.error("更新狀態失敗", err));
+});
+
+document.querySelectorAll(".status-tabs button").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll(".status-tabs button").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    statusFilter = btn.dataset.status;
+    render();
+  });
+});
+
+searchEl.addEventListener("input", render);
+regionEl.addEventListener("change", render);
+fieldEl.addEventListener("change", render);
+
+// 即時監聽 Firestore，資料一有更新畫面就會跟著變
+db.collection("activities").orderBy("pubDate", "desc").limit(400)
+  .onSnapshot(snapshot=>{
+    allItems = snapshot.docs.map(d=>({id:d.id, ...d.data()}));
+    populateFilterOptions();
+    updateTicker();
+    render();
+  }, err=>{
+    console.error("讀取 Firestore 失敗", err);
+    listEl.innerHTML = `<div class="empty-state"><strong>無法連線到資料庫</strong>請確認 firebaseConfig 是否已填入正確設定。</div>`;
+  });
+</script>
+</body>
+</html>

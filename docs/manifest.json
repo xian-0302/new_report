@@ -1,0 +1,9 @@
+{
+  "name": "兩岸交流活動追蹤看板",
+  "short_name": "兩岸電訊",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#E4E1D6",
+  "theme_color": "#22201B",
+  "icons": []
+}
