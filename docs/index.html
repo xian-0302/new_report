@@ -409,6 +409,15 @@ fieldEl.addEventListener("change", render);
 db.collection("activities").orderBy("fetchedAt", "desc").limit(400)
   .onSnapshot(snapshot=>{
     allItems = snapshot.docs.map(d=>({id:d.id, ...d.data()}));
+    // Firestore 的 orderBy 只能拿到「抓取順序」，這裡再用真正解析出的日期
+    // 重新排一次，日期解析不出來的（fmtDate 會顯示「日期不詳」）一律排到最後
+    allItems.sort((a,b)=>{
+      const da = new Date(a.pubDate);
+      const db_ = new Date(b.pubDate);
+      const va = isNaN(da) ? -Infinity : da.getTime();
+      const vb = isNaN(db_) ? -Infinity : db_.getTime();
+      return vb - va;
+    });
     populateFilterOptions();
     updateTicker();
     render();
