@@ -406,7 +406,7 @@ regionEl.addEventListener("change", render);
 fieldEl.addEventListener("change", render);
 
 // 即時監聽 Firestore，資料一有更新畫面就會跟著變
-db.collection("activities").orderBy("pubDate", "desc").limit(400)
+db.collection("activities").orderBy("fetchedAt", "desc").limit(400)
   .onSnapshot(snapshot=>{
     allItems = snapshot.docs.map(d=>({id:d.id, ...d.data()}));
     populateFilterOptions();
@@ -419,4 +419,3 @@ db.collection("activities").orderBy("pubDate", "desc").limit(400)
 </script>
 </body>
 </html>
-
