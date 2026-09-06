@@ -124,6 +124,28 @@ const KEYWORDS = [
   "閩臺 交流",
   "台胞 考察",
   "台胞 參訪團",
+  "魯台",
+  "蘇台",
+  "浙台",
+  "晉台",
+  "遼台",
+  "鄂台",
+  "川台",
+  "桂台",
+  "赴陸",
+  "赴台",
+  "兩岸座談",
+  "兩岸研習",
+  "兩岸宗親",
+  "兩岸 參觀",
+  "兩岸 參訪",
+  "兩岸創業基地",
+  "兩岸非遺",
+  "兩岸觀光",
+  "兩岸合作大會",
+  "兩岸論壇",
+  "兩岸考察",
+  "兩岸聯誼",
 ];
 
 const REGION_KEYWORDS = [
@@ -201,14 +223,33 @@ function hashId(link) {
   return crypto.createHash("sha1").update(link).digest("hex");
 }
 
+// 用 AbortController 實作真正會生效的逾時機制 —— rss-parser 內建的 timeout
+// 選項在某些網路狀況下不會確實中斷連線，導致整個腳本卡住不會結束，改成自己
+// 控制 fetch + 逾時，逾時後保證會拋出錯誤，讓迴圈可以繼續跑下一組關鍵字。
+async function fetchTextWithTimeout(url, ms) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    const res = await fetch(url, {signal: controller.signal});
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchAndStore() {
   let totalNew = 0;
   const results = [];
 
-  for (const kw of KEYWORDS) {
+  for (let i = 0; i < KEYWORDS.length; i++) {
+    const kw = KEYWORDS[i];
     const url = `https://news.google.com/rss/search?q=${encodeURIComponent(kw)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
+    console.log(`[${i + 1}/${KEYWORDS.length}] 查詢「${kw}」…`);
     try {
-      const feed = await parser.parseURL(url);
+      const xml = await fetchTextWithTimeout(url, 10000);
+      const feed = await parser.parseString(xml);
+      console.log(`  → 取得 ${feed.items.length} 筆結果`);
       for (const item of feed.items) {
         if (!item.link) continue;
         const id = hashId(item.link);
@@ -280,12 +321,20 @@ async function fetchAndStore() {
   return {totalNew, sample: results.slice(0, 10)};
 }
 
+// 安全網：萬一還是有地方卡住，5 分鐘後強制結束整支腳本，避免 Actions 空轉浪費額度
+const watchdog = setTimeout(() => {
+  console.error("執行超過 5 分鐘，強制中止（安全網逾時）");
+  process.exit(1);
+}, 5 * 60 * 1000);
+
 fetchAndStore()
     .then((r) => {
+      clearTimeout(watchdog);
       console.log("執行成功", r);
       process.exit(0);
     })
     .catch((err) => {
+      clearTimeout(watchdog);
       console.error("執行失敗", err);
       process.exit(1);
     });
