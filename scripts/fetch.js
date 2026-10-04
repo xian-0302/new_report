@@ -146,6 +146,12 @@ const KEYWORDS = [
   "兩岸論壇",
   "兩岸考察",
   "兩岸聯誼",
+  "台灣 參展",
+  "台商 參展",
+  "台灣 展團",
+  "港澳台辦 交流",
+  "兩岸文化尋根",
+  "兩岸挑戰賽",
 ];
 
 const REGION_KEYWORDS = [
@@ -337,4 +343,6 @@ fetchAndStore()
       clearTimeout(watchdog);
       console.error("執行失敗", err);
       process.exit(1);
+    });
+
     });
