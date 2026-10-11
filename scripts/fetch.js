@@ -344,5 +344,3 @@ fetchAndStore()
       console.error("執行失敗", err);
       process.exit(1);
     });
-
-    });
