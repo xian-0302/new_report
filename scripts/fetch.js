@@ -57,19 +57,69 @@ const DIRECT_SOURCES = [
     url: "http://www.fj.taiwan.cn/news/",
     region: "福建",
   },
+  // 國台辦網站的「手機版」路徑（/m/）實測打得開，電腦版會一直轉址被擋。
+  // 這兩個頻道的標題不一定有「交流/舉辦」等字眼，所以標記 trusted 略過白名單，
+  // 只套用排除清單；日期從網址（t20261021_...）取得，因為列表頁沒有顯示日期。
+  {
+    name: "國台辦-交流交往",
+    url: "https://www.gwytb.gov.cn/m/jljw/",
+    region: null,
+    dateFromUrl: true,
+    trusted: true,
+  },
+  {
+    name: "國台辦-發布會輯錄",
+    url: "https://www.gwytb.gov.cn/m/speech/",
+    region: null,
+    dateFromUrl: true,
+    trusted: true,
+  },
 ];
+
+// 國台辦等網站的網頁編碼是 GB2312，不能直接當 UTF-8 讀，否則整頁亂碼。
+function decodeBody(res) {
+  const buf = Buffer.from(res.data);
+  const ct = String(res.headers["content-type"] || "");
+  let charset = (ct.match(/charset=([\w-]+)/i) || [])[1];
+  if (!charset) {
+    const head = buf.slice(0, 2048).toString("latin1");
+    charset = (head.match(/charset=["']?([\w-]+)/i) || [])[1];
+  }
+  charset = (charset || "utf-8").toLowerCase();
+  if (charset === "gb2312" || charset === "gbk") charset = "gb18030";
+  try {
+    return new TextDecoder(charset).decode(buf);
+  } catch (e) {
+    return buf.toString("utf8");
+  }
+}
 
 async function fetchDirectSource(src) {
   const res = await axios.get(src.url, {
     timeout: 15000,
+    responseType: "arraybuffer",
     headers: {"User-Agent": "Mozilla/5.0 (compatible; CrossStraitTracker/1.0)"},
   });
-  const $ = cheerio.load(res.data);
+  const $ = cheerio.load(decodeBody(res));
   const results = [];
 
   $("a").each((_, el) => {
     const href = $(el).attr("href") || "";
     if (!/t\d{8}_\d+\.htm|\/\d{4}-\d{2}-\d{2}\/\d+\.html/.test(href)) return;
+
+    if (src.dateFromUrl) {
+      const dm = href.match(/t(\d{4})(\d{2})(\d{2})_\d+\.htm/);
+      if (!dm) return;
+      const t = ($(el).attr("title") || $(el).text()).trim();
+      if (!t) return;
+      results.push({
+        title: t,
+        link: new URL(href, src.url).toString(),
+        pubDate: `${dm[1]}-${dm[2]}-${dm[3]}T00:00:00+08:00`,
+        source: src.name,
+      });
+      return;
+    }
 
     const raw = $(el).text().trim();
     const m = raw.match(/^(.*?)(\d{4}-\d{2}-\d{2}\s*\d{2}:\d{2})(.*)$/);
@@ -300,7 +350,7 @@ async function fetchAndStore() {
         if (existing.exists) continue;
 
         if (isExcluded(it.title)) continue;
-        if (!hasEventSignal(it.title)) continue;
+        if (!src.trusted && !hasEventSignal(it.title)) continue;
 
         const record = {
           title: it.title,
@@ -309,7 +359,7 @@ async function fetchAndStore() {
           pubDate: it.pubDate || null,
           fetchedAt: FieldValue.serverTimestamp(),
           matchedKeyword: `直接爬取:${src.name}`,
-          regions: Array.from(new Set([src.region, ...guessTags(it.title, REGION_KEYWORDS)])),
+          regions: Array.from(new Set([src.region, ...guessTags(it.title, REGION_KEYWORDS)].filter(Boolean))),
           fields: guessFields(it.title),
           status: "unverified",
         };
