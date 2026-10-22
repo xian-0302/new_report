@@ -196,9 +196,10 @@ const KEYWORDS = [
   "兩岸論壇",
   "兩岸考察",
   "兩岸聯誼",
-  "台灣 參展",
-  "台商 參展",
-  "台灣 展團",
+  "兩岸 宗教交流",
+  "媽祖 兩岸",
+  "兩岸 宮廟",
+  "宮廟 赴陸 進香",
   "港澳台辦 交流",
   "兩岸文化尋根",
   "兩岸挑戰賽",
@@ -257,6 +258,8 @@ const REQUIRE_KEYWORDS = [
   "营队", "领袖营", "报名", "招募", "缔结", "签署", "协议",
   "开幕", "启动", "仪式", "举办", "举行", "登场", "博览会", "对接会",
   "洽谈会", "恳谈会", "联谊", "考察团", "踏查", "交易会", "峰会", "招商", "启用",
+  // 宗教交流常見的活動字眼
+  "進香", "进香", "遶境", "绕境", "繞境", "祭祖", "謁祖", "谒祖", "巡安", "朝聖", "朝圣",
 ];
 
 function isTrustedSeries(kw){
@@ -264,6 +267,24 @@ function isTrustedSeries(kw){
 }
 function hasEventSignal(text){
   return REQUIRE_KEYWORDS.some((k) => text.includes(k));
+}
+
+// 兩岸關聯字眼 — 標題須至少含一個，才算「跟兩岸有關」。用來擋掉純台灣內部（本地展覽、旅展）
+// 或純大陸內部的新聞。比對前先把「臺」統一換成「台」，所以繁體寫法（臺胞、閩臺）也會命中。
+// 刻意不放單獨的「陸」（會誤中「颱風登陸」）和單獨的「台商」（很多是台灣本地的投資新聞）。
+const CROSS_STRAIT_MARKERS = [
+  "兩岸", "两岸", "海峽", "海峡", "台胞", "台青", "台辦", "台办", "台聯", "台联", "台屬", "台属",
+  "對台", "对台", "陸委會", "陆委会", "海協", "海协", "海基會", "海基会", "大陸", "大陆",
+  "赴陸", "赴陆", "陸生", "陆生", "陸客", "陆客", "陸配", "陆配", "陸資", "陆资", "陸企", "陆企",
+  "陸方", "陆方", "陸媒", "陆媒", "港台", "陸台", "陆台", "港澳台", "台港澳", "台灣同胞", "台湾同胞",
+  "媽祖", "妈祖", "湄洲", "宗親", "宗亲", "祖廟", "祖庙", "尋根", "寻根", "謁祖", "谒祖",
+  "同根", "同源", "一家親", "一家亲", "融合發展", "融合发展", "小三通", "海交會", "海交会",
+];
+// 「閩台、魯台、桂台、嘉台…」這類「地名簡稱＋台」的寫法
+const CROSS_STRAIT_REGEX = /[閩闽魯鲁蘇苏浙晉晋遼辽鄂川桂粵粤滬沪冀豫湘贛赣皖陝陕滇黔瓊琼渝嘉廈厦蓉]台/;
+function hasCrossStraitSignal(text){
+  const t = String(text || "").replace(/臺/g, "台");
+  return CROSS_STRAIT_MARKERS.some((k) => t.includes(k)) || CROSS_STRAIT_REGEX.test(t);
 }
 function guessTags(text, list) {
   return list.filter((k) => text.includes(k));
@@ -294,9 +315,39 @@ async function fetchTextWithTimeout(url, ms) {
   }
 }
 
+// 清掉資料庫裡「不符合現行規則」的舊資料（例如之前收進來的純台灣本地展覽）。
+// 只動「未查證」且不是官網來源的資料；你手動標過「已確認／已略過」的一律保留。
+async function purgeNoise() {
+  const snap = await db.collection("activities").get();
+  const doomed = [];
+  for (const d of snap.docs) {
+    const v = d.data();
+    if ((v.status || "unverified") !== "unverified") continue;
+    if (String(v.matchedKeyword || "").startsWith("直接爬取:")) continue;
+    const title = v.title || "";
+    const bad = isExcluded(title) ||
+      (!isTrustedSeries(v.matchedKeyword) && !hasCrossStraitSignal(title));
+    if (bad) doomed.push({ref: d.ref, title});
+  }
+  for (let i = 0; i < doomed.length; i += 400) {
+    const batch = db.batch();
+    doomed.slice(i, i + 400).forEach((x) => batch.delete(x.ref));
+    await batch.commit();
+  }
+  console.log(`清理雜訊：資料庫共 ${snap.size} 筆，刪除 ${doomed.length} 筆不含兩岸關聯的未查證資料`);
+  doomed.slice(0, 15).forEach((x) => console.log(`  刪除：${x.title}`));
+  return doomed.length;
+}
+
 async function fetchAndStore() {
   let totalNew = 0;
   const results = [];
+
+  try {
+    await purgeNoise();
+  } catch (err) {
+    console.error("清理雜訊失敗（不影響後續抓取）:", err.message);
+  }
 
   // 先跑直接爬取的官網來源：數量少、速度快，又是最貼近源頭的資料，
   // 放最前面，避免被後面幾十組關鍵字查詢拖到逾時而根本沒跑到。
@@ -359,6 +410,7 @@ async function fetchAndStore() {
         if (!item.link) continue;
         const text = `${item.title || ""} ${item.contentSnippet || ""}`;
         if (isExcluded(text)) continue;
+        if (!isTrustedSeries(kw) && !hasCrossStraitSignal(text)) continue;
         if (!isTrustedSeries(kw) && !hasEventSignal(text)) continue;
         byId.set(hashId(item.link), {item, text});
       }
