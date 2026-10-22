@@ -298,60 +298,29 @@ async function fetchAndStore() {
   let totalNew = 0;
   const results = [];
 
-  for (let i = 0; i < KEYWORDS.length; i++) {
-    const kw = KEYWORDS[i];
-    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(kw)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
-    console.log(`[${i + 1}/${KEYWORDS.length}] 查詢「${kw}」…`);
-    try {
-      const xml = await fetchTextWithTimeout(url, 10000);
-      const feed = await parser.parseString(xml);
-      console.log(`  → 取得 ${feed.items.length} 筆結果`);
-      for (const item of feed.items) {
-        if (!item.link) continue;
-        const id = hashId(item.link);
-        const docRef = db.collection("activities").doc(id);
-        const existing = await docRef.get();
-        if (existing.exists) continue;
-
-        const text = `${item.title || ""} ${item.contentSnippet || ""}`;
-        if (isExcluded(text)) continue;
-        if (!isTrustedSeries(kw) && !hasEventSignal(text)) continue;
-        const sourceMatch = (item.title || "").match(/-\s*([^-]+)$/);
-
-        const record = {
-          title: item.title || "",
-          link: item.link,
-          source: sourceMatch ? sourceMatch[1].trim() : "",
-          pubDate: item.pubDate || null,
-          fetchedAt: FieldValue.serverTimestamp(),
-          matchedKeyword: kw,
-          regions: guessTags(text, REGION_KEYWORDS),
-          fields: guessFields(text),
-          status: "unverified",
-        };
-        await docRef.set(record);
-        totalNew++;
-        results.push(record.title);
-      }
-    } catch (err) {
-      console.error(`關鍵字「${kw}」抓取失敗:`, err.message);
-    }
-  }
-
-  console.log(`Google News 關鍵字抓取完成，新增 ${totalNew} 筆。`);
-
+  // 先跑直接爬取的官網來源：數量少、速度快，又是最貼近源頭的資料，
+  // 放最前面，避免被後面幾十組關鍵字查詢拖到逾時而根本沒跑到。
   for (const src of DIRECT_SOURCES) {
+    console.log(`直接爬取「${src.name}」…`);
     try {
       const items = await fetchDirectSource(src);
-      for (const it of items) {
-        const id = hashId(it.link);
-        const docRef = db.collection("activities").doc(id);
-        const existing = await docRef.get();
-        if (existing.exists) continue;
+      console.log(`  → 取得 ${items.length} 筆`);
 
+      const byLink = new Map();
+      for (const it of items) {
         if (isExcluded(it.title)) continue;
         if (!src.trusted && !hasEventSignal(it.title)) continue;
+        byLink.set(it.link, it);
+      }
+      const wanted = [...byLink.values()];
+      if (!wanted.length) continue;
 
+      const refs = wanted.map((it) => db.collection("activities").doc(hashId(it.link)));
+      const snaps = await db.getAll(...refs);
+      let added = 0;
+      for (let i = 0; i < wanted.length; i++) {
+        if (snaps[i].exists) continue;
+        const it = wanted[i];
         const record = {
           title: it.title,
           link: it.link,
@@ -363,12 +332,65 @@ async function fetchAndStore() {
           fields: guessFields(it.title),
           status: "unverified",
         };
-        await docRef.set(record);
+        await refs[i].set(record);
         totalNew++;
+        added++;
         results.push(record.title);
       }
+      console.log(`  → 新增 ${added} 筆`);
     } catch (err) {
       console.error(`直接爬取來源「${src.name}」失敗:`, err.message);
+    }
+  }
+
+  for (let i = 0; i < KEYWORDS.length; i++) {
+    const kw = KEYWORDS[i];
+    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(kw)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
+    console.log(`[${i + 1}/${KEYWORDS.length}] 查詢「${kw}」…`);
+    try {
+      const xml = await fetchTextWithTimeout(url, 10000);
+      const feed = await parser.parseString(xml);
+      console.log(`  → 取得 ${feed.items.length} 筆結果`);
+
+      // 先在記憶體裡過濾（排除清單／白名單），只對通過的項目查資料庫，
+      // 而且一組關鍵字只發一次批次查詢，不再是每一則新聞各查一次（那樣太慢）。
+      const byId = new Map();
+      for (const item of feed.items) {
+        if (!item.link) continue;
+        const text = `${item.title || ""} ${item.contentSnippet || ""}`;
+        if (isExcluded(text)) continue;
+        if (!isTrustedSeries(kw) && !hasEventSignal(text)) continue;
+        byId.set(hashId(item.link), {item, text});
+      }
+      const entries = [...byId.entries()];
+      if (!entries.length) continue;
+
+      const refs = entries.map(([id]) => db.collection("activities").doc(id));
+      const snaps = await db.getAll(...refs);
+      let added = 0;
+      for (let j = 0; j < entries.length; j++) {
+        if (snaps[j].exists) continue;
+        const {item, text} = entries[j][1];
+        const sourceMatch = (item.title || "").match(/-\s*([^-]+)$/);
+        const record = {
+          title: item.title || "",
+          link: item.link,
+          source: sourceMatch ? sourceMatch[1].trim() : "",
+          pubDate: item.pubDate || null,
+          fetchedAt: FieldValue.serverTimestamp(),
+          matchedKeyword: kw,
+          regions: guessTags(text, REGION_KEYWORDS),
+          fields: guessFields(text),
+          status: "unverified",
+        };
+        await refs[j].set(record);
+        totalNew++;
+        added++;
+        results.push(record.title);
+      }
+      console.log(`  → 新增 ${added} 筆`);
+    } catch (err) {
+      console.error(`關鍵字「${kw}」抓取失敗:`, err.message);
     }
   }
 
@@ -377,11 +399,11 @@ async function fetchAndStore() {
   return {totalNew, sample: results.slice(0, 10)};
 }
 
-// 安全網：萬一還是有地方卡住，5 分鐘後強制結束整支腳本，避免 Actions 空轉浪費額度
+// 安全網：萬一還是有地方卡住，12 分鐘後強制結束整支腳本，避免 Actions 空轉浪費額度
 const watchdog = setTimeout(() => {
-  console.error("執行超過 5 分鐘，強制中止（安全網逾時）");
+  console.error("執行超過 12 分鐘，強制中止（安全網逾時）");
   process.exit(1);
-}, 5 * 60 * 1000);
+}, 12 * 60 * 1000);
 
 fetchAndStore()
     .then((r) => {
