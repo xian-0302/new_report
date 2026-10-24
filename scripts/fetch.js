@@ -100,38 +100,40 @@ async function fetchDirectSource(src) {
     responseType: "arraybuffer",
     headers: {"User-Agent": "Mozilla/5.0 (compatible; CrossStraitTracker/1.0)"},
   });
-  const $ = cheerio.load(decodeBody(res));
+  const html = decodeBody(res);
+  const $ = cheerio.load(html);
   const results = [];
+  let anchors = 0;
 
   $("a").each((_, el) => {
+    anchors++;
     const href = $(el).attr("href") || "";
     if (!/t\d{8}_\d+\.htm|\/\d{4}-\d{2}-\d{2}\/\d+\.html/.test(href)) return;
 
+    const link = new URL(href, src.url).toString();
+    // 標題、日期、摘要常被擠在同一個 <a> 裡，中間會夾著換行和空白，先壓成單一空白再處理
+    const text = $(el).text().replace(/\s+/g, " ").trim();
+    const attrTitle = ($(el).attr("title") || "").replace(/\s+/g, " ").trim();
+    const um = href.match(/t(\d{4})(\d{2})(\d{2})_\d+\.htm/);
+    const urlDate = um ? `${um[1]}-${um[2]}-${um[3]}T00:00:00+08:00` : null;
+
     if (src.dateFromUrl) {
-      const dm = href.match(/t(\d{4})(\d{2})(\d{2})_\d+\.htm/);
-      if (!dm) return;
-      const t = ($(el).attr("title") || $(el).text()).trim();
-      if (!t) return;
-      results.push({
-        title: t,
-        link: new URL(href, src.url).toString(),
-        pubDate: `${dm[1]}-${dm[2]}-${dm[3]}T00:00:00+08:00`,
-        source: src.name,
-      });
+      const t = attrTitle || text;
+      if (!urlDate || !t) return;
+      results.push({title: t, link, pubDate: urlDate, source: src.name});
       return;
     }
 
-    const raw = $(el).text().trim();
-    const m = raw.match(/^(.*?)(\d{4}-\d{2}-\d{2}\s*\d{2}:\d{2})(.*)$/);
-    if (!m) return;
-
-    const title = m[1].trim();
-    if (!title) return;
-    const link = href.startsWith("http") ? href : new URL(href, src.url).toString();
-
-    results.push({title, link, pubDate: m[2].trim(), source: src.name});
+    const m = text.match(/^(.*?)(\d{4}-\d{2}-\d{2}\s*\d{2}:\d{2})(.*)$/);
+    if (m && m[1].trim()) {
+      results.push({title: m[1].trim(), link, pubDate: m[2].trim(), source: src.name});
+    } else if (urlDate && (attrTitle || text)) {
+      // 文字裡找不到日期時，改用網址裡的日期，標題取 title 屬性或前 60 字
+      results.push({title: (attrTitle || text).slice(0, 60), link, pubDate: urlDate, source: src.name});
+    }
   });
 
+  console.log(`  → 頁面 ${html.length} 字、連結 ${anchors} 個、符合文章格式 ${results.length} 個`);
   return results;
 }
 
@@ -279,12 +281,42 @@ const CROSS_STRAIT_MARKERS = [
   "陸方", "陆方", "陸媒", "陆媒", "港台", "陸台", "陆台", "港澳台", "台港澳", "台灣同胞", "台湾同胞",
   "媽祖", "妈祖", "湄洲", "宗親", "宗亲", "祖廟", "祖庙", "尋根", "寻根", "謁祖", "谒祖",
   "同根", "同源", "一家親", "一家亲", "融合發展", "融合发展", "小三通", "海交會", "海交会",
+  // 日誌檢查時發現被誤刪的真兩岸活動：武漢台灣周、台商會聯歡、臺灣青年看武漢
+  "台灣周", "台灣週", "台湾周", "台灣青年", "台湾青年", "台商會", "台商会", "台商協會", "台商协会",
+  "台協", "台协", "台企", "台資", "台资", "台灣民眾", "台湾民众",
 ];
+// 標題同時出現「大陸地名」和「台灣相關字」，也視為兩岸相關（例如「湖北·武漢台灣周」「台灣青年看武漢」）
+const MAINLAND_PLACES = [
+  "北京", "上海", "天津", "重慶", "福建", "福州", "廈門", "泉州", "漳州", "莆田", "平潭", "三明", "龍巖", "寧德", "南平",
+  "江蘇", "南京", "蘇州", "昆山", "無錫", "常州", "揚州", "浙江", "杭州", "寧波", "溫州", "嘉興", "廣東", "廣州", "深圳",
+  "珠海", "東莞", "湖北", "武漢", "湖南", "長沙", "江西", "南昌", "山東", "青島", "濟南", "煙台", "山西", "太原", "陝西",
+  "西安", "河南", "鄭州", "河北", "石家莊", "遼寧", "瀋陽", "大連", "吉林", "長春", "黑龍江", "哈爾濱", "四川", "成都",
+  "雲南", "昆明", "貴州", "貴陽", "廣西", "桂林", "南寧", "海南", "海口", "安徽", "合肥", "寧夏", "銀川", "甘肅", "蘭州",
+  "新疆", "烏魯木齊", "內蒙古", "青海", "西藏", "拉薩",
+];
+const TAIWAN_WORDS = ["台灣", "台胞", "台商", "台青", "台屬", "台企", "台資"];
 // 「閩台、魯台、桂台、嘉台…」這類「地名簡稱＋台」的寫法
 const CROSS_STRAIT_REGEX = /[閩闽魯鲁蘇苏浙晉晋遼辽鄂川桂粵粤滬沪冀豫湘贛赣皖陝陕滇黔瓊琼渝嘉廈厦蓉]台/;
 function hasCrossStraitSignal(text){
   const t = String(text || "").replace(/臺/g, "台");
-  return CROSS_STRAIT_MARKERS.some((k) => t.includes(k)) || CROSS_STRAIT_REGEX.test(t);
+  if (CROSS_STRAIT_MARKERS.some((k) => t.includes(k)) || CROSS_STRAIT_REGEX.test(t)) return true;
+  return MAINLAND_PLACES.some((k) => t.includes(k)) && TAIWAN_WORDS.some((k) => t.includes(k));
+}
+
+// 「已知系列」關鍵字（如蘭臺青少年）Google 會拆字搜尋，會撈到無關新聞（例如純台灣的青少年報告），
+// 所以不能無條件放行：標題裡必須真的出現這個系列名稱才算數。
+function isTrustedMatch(kw, text){
+  if (!isTrustedSeries(kw)) return false;
+  const n = (x) => String(x || "").replace(/臺/g, "台");
+  return n(text).includes(n(kw));
+}
+
+// 排序用的標準時間（ISO 格式）。Firestore 對 Google 新聞原始的 pubDate 文字只能照字母排序，
+// 所以另外存一個可以真正按時間排序的欄位。
+function toSortKey(pubDate, fallback){
+  const d = pubDate ? new Date(pubDate) : null;
+  if (d && !isNaN(d)) return d.toISOString();
+  return (fallback || new Date()).toISOString();
 }
 function guessTags(text, list) {
   return list.filter((k) => text.includes(k));
@@ -315,26 +347,39 @@ async function fetchTextWithTimeout(url, ms) {
   }
 }
 
-// 清掉資料庫裡「不符合現行規則」的舊資料（例如之前收進來的純台灣本地展覽）。
-// 只動「未查證」且不是官網來源的資料；你手動標過「已確認／已略過」的一律保留。
+// 維護資料庫：(1) 清掉「不符合現行規則」的舊資料（例如之前收進來的純台灣本地展覽）；
+// (2) 幫還沒有 pubDateSort 的舊資料補上可排序的時間欄位，看板才能照真正的新聞日期排序。
+// 只刪「未查證」且不是官網來源的資料；你手動標過「已確認／已略過」的一律保留。
 async function purgeNoise() {
   const snap = await db.collection("activities").get();
   const doomed = [];
+  const fixes = [];
   for (const d of snap.docs) {
     const v = d.data();
-    if ((v.status || "unverified") !== "unverified") continue;
-    if (String(v.matchedKeyword || "").startsWith("直接爬取:")) continue;
+    const isDirect = String(v.matchedKeyword || "").startsWith("直接爬取:");
+    const protectedDoc = (v.status || "unverified") !== "unverified" || isDirect;
     const title = v.title || "";
-    const bad = isExcluded(title) ||
-      (!isTrustedSeries(v.matchedKeyword) && !hasCrossStraitSignal(title));
-    if (bad) doomed.push({ref: d.ref, title});
+    const bad = !protectedDoc && (isExcluded(title) ||
+      (!isTrustedMatch(v.matchedKeyword, title) && !hasCrossStraitSignal(title)));
+    if (bad) {
+      doomed.push({ref: d.ref, title});
+      continue;
+    }
+    if (!v.pubDateSort) {
+      fixes.push({ref: d.ref, key: toSortKey(v.pubDate, d.createTime ? d.createTime.toDate() : null)});
+    }
   }
   for (let i = 0; i < doomed.length; i += 400) {
     const batch = db.batch();
     doomed.slice(i, i + 400).forEach((x) => batch.delete(x.ref));
     await batch.commit();
   }
-  console.log(`清理雜訊：資料庫共 ${snap.size} 筆，刪除 ${doomed.length} 筆不含兩岸關聯的未查證資料`);
+  for (let i = 0; i < fixes.length; i += 400) {
+    const batch = db.batch();
+    fixes.slice(i, i + 400).forEach((x) => batch.update(x.ref, {pubDateSort: x.key}));
+    await batch.commit();
+  }
+  console.log(`維護資料庫：共 ${snap.size} 筆，刪除 ${doomed.length} 筆不含兩岸關聯的未查證資料，補上排序欄位 ${fixes.length} 筆`);
   doomed.slice(0, 15).forEach((x) => console.log(`  刪除：${x.title}`));
   return doomed.length;
 }
@@ -377,6 +422,7 @@ async function fetchAndStore() {
           link: it.link,
           source: src.name,
           pubDate: it.pubDate || null,
+          pubDateSort: toSortKey(it.pubDate),
           fetchedAt: FieldValue.serverTimestamp(),
           matchedKeyword: `直接爬取:${src.name}`,
           regions: Array.from(new Set([src.region, ...guessTags(it.title, REGION_KEYWORDS)].filter(Boolean))),
@@ -410,8 +456,9 @@ async function fetchAndStore() {
         if (!item.link) continue;
         const text = `${item.title || ""} ${item.contentSnippet || ""}`;
         if (isExcluded(text)) continue;
-        if (!isTrustedSeries(kw) && !hasCrossStraitSignal(text)) continue;
-        if (!isTrustedSeries(kw) && !hasEventSignal(text)) continue;
+        const trusted = isTrustedMatch(kw, text);
+        if (!trusted && !hasCrossStraitSignal(text)) continue;
+        if (!trusted && !hasEventSignal(text)) continue;
         byId.set(hashId(item.link), {item, text});
       }
       const entries = [...byId.entries()];
@@ -429,6 +476,7 @@ async function fetchAndStore() {
           link: item.link,
           source: sourceMatch ? sourceMatch[1].trim() : "",
           pubDate: item.pubDate || null,
+          pubDateSort: toSortKey(item.pubDate),
           fetchedAt: FieldValue.serverTimestamp(),
           matchedKeyword: kw,
           regions: guessTags(text, REGION_KEYWORDS),
