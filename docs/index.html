@@ -405,26 +405,42 @@ searchEl.addEventListener("input", render);
 regionEl.addEventListener("change", render);
 fieldEl.addEventListener("change", render);
 
-// 即時監聽 Firestore，資料一有更新畫面就會跟著變
-db.collection("activities").orderBy("fetchedAt", "desc").limit(400)
-  .onSnapshot(snapshot=>{
-    allItems = snapshot.docs.map(d=>({id:d.id, ...d.data()}));
-    // Firestore 的 orderBy 只能拿到「抓取順序」，這裡再用真正解析出的日期
-    // 重新排一次，日期解析不出來的（fmtDate 會顯示「日期不詳」）一律排到最後
-    allItems.sort((a,b)=>{
-      const da = new Date(a.pubDate);
-      const db_ = new Date(b.pubDate);
-      const va = isNaN(da) ? -Infinity : da.getTime();
-      const vb = isNaN(db_) ? -Infinity : db_.getTime();
-      return vb - va;
-    });
-    populateFilterOptions();
-    updateTicker();
-    render();
-  }, err=>{
-    console.error("讀取 Firestore 失敗", err);
-    listEl.innerHTML = `<div class="empty-state"><strong>無法連線到資料庫</strong>請確認 firebaseConfig 是否已填入正確設定。</div>`;
+// 即時監聽 Firestore，資料一有更新畫面就會跟著變。
+// 以「新聞日期」(pubDateSort) 由新到舊撈最新的 600 筆，所以不管資料庫有多少筆，
+// 看到的一定是日期最新的。抓取程式還沒幫舊資料補上這個欄位時（更新後第一次執行前），
+// 會暫時改用「抓取時間」撈，避免畫面一片空白。
+function handleSnapshot(snapshot){
+  allItems = snapshot.docs.map(d=>({id:d.id, ...d.data()}));
+  // 再用真正解析出的日期排一次，日期解析不出來的（fmtDate 會顯示「日期不詳」）一律排到最後
+  allItems.sort((a,b)=>{
+    const da = new Date(a.pubDate);
+    const db_ = new Date(b.pubDate);
+    const va = isNaN(da) ? -Infinity : da.getTime();
+    const vb = isNaN(db_) ? -Infinity : db_.getTime();
+    return vb - va;
   });
+  populateFilterOptions();
+  updateTicker();
+  render();
+}
+function handleError(err){
+  console.error("讀取 Firestore 失敗", err);
+  listEl.innerHTML = `<div class="empty-state"><strong>無法連線到資料庫</strong>請確認 firebaseConfig 是否已填入正確設定。</div>`;
+}
+
+let fallbackUnsub = null;
+db.collection("activities").orderBy("pubDateSort", "desc").limit(600)
+  .onSnapshot(snapshot=>{
+    if(snapshot.empty){
+      if(!fallbackUnsub){
+        fallbackUnsub = db.collection("activities").orderBy("fetchedAt", "desc").limit(400)
+          .onSnapshot(handleSnapshot, handleError);
+      }
+      return;
+    }
+    if(fallbackUnsub){ fallbackUnsub(); fallbackUnsub = null; }
+    handleSnapshot(snapshot);
+  }, handleError);
 </script>
 </body>
 </html>
